@@ -6,7 +6,7 @@ Disabler for Driver Signature Enforcement
 - [ ] Patching using UEFI
 
 ### Usage
-Driver supports Manual mapping, so you can use for example kdmapper for mapping driver or just create it using new service (but you need to sign it):
+Driver supports Manual mapping, so you can use for example [kdmapper](https://github.com/TheCruZ/kdmapper) for mapping driver or just create it using new service (but you need to sign it):
 ```
 sc create dse type=kernel binPath=<path/to/KernelMode.sys>
 sc start dse
