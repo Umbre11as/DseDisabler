@@ -1,4 +1,4 @@
-#include "Memory.h"
+#include <ntifs.h>
 #include <ntstrsafe.h>
 
 #define Log(format, ...) DbgPrintEx(0, 0, format, __VA_ARGS__)
@@ -120,46 +120,91 @@ private:
     unsigned char _pad0[0x550];
 public:
     PPEB Peb; //0x550
-} EPROCESS, *PEPROCESS;
+} EPROCESS;
 
 typedef NTSTATUS(*DRIVER_ENTRYPOINT)(PDRIVER_OBJECT, PUNICODE_STRING);
 extern "C" {
-    NTKERNELAPI PVOID NTAPI RtlFindExportedRoutineByName(
-            IN PVOID ImageBase,
-            IN PCCH RoutineNam
-    );
-
     NTKERNELAPI NTSTATUS NTAPI IoCreateDriver(
             IN PUNICODE_STRING Name,
             IN DRIVER_ENTRYPOINT DriverInit
     );
 }
 
-UNICODE_STRING DRIVER_NAME = RTL_CONSTANT_STRING(L"\\Driver\\Fuckyoublume");
-UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING(L"\\Device\\Fuckyoublume");
-UNICODE_STRING DEVICE_LINK = RTL_CONSTANT_STRING(L"\\DosDevices\\Fuckyoublume");
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wsizeof-array-div"
+UNICODE_STRING DRIVER_NAME = RTL_CONSTANT_STRING(L"\\Driver\\DseDisabler");
+UNICODE_STRING DEVICE_NAME = RTL_CONSTANT_STRING(L"\\Device\\DseDisabler");
+UNICODE_STRING DEVICE_LINK = RTL_CONSTANT_STRING(L"\\DosDevices\\DseDisabler");
+#pragma clang diagnostic pop
 
-NTSTATUS DriverInitialize(PDRIVER_OBJECT, PUNICODE_STRING) {
+NTSTATUS IrpDummy(PDEVICE_OBJECT, PIRP irp) {
+    irp->IoStatus.Status = STATUS_SUCCESS;
+    irp->IoStatus.Information = 0;
+
+    IoCompleteRequest(irp, IO_NO_INCREMENT);
+    return STATUS_SUCCESS;
+}
+
+struct Request {
+    ULONGLONG Offset;
+    int NewValue;
+};
+
+PVOID ciBase = nullptr;
+
+NTSTATUS IrpDeviceControl(PDEVICE_OBJECT, PIRP irp) {
+    PIO_STACK_LOCATION stackLocation = IoGetCurrentIrpStackLocation(irp);
+    const ULONG code = stackLocation->Parameters.DeviceIoControl.IoControlCode;
+
+    if (code == 0x100) {
+        auto* request = reinterpret_cast<Request*>(irp->AssociatedIrp.SystemBuffer);
+        memcpy(reinterpret_cast<PVOID>(reinterpret_cast<ULONGLONG>(ciBase) + request->Offset), &request->NewValue, sizeof(request->NewValue));
+
+        int newV = 0;
+        memcpy(&newV, reinterpret_cast<PVOID>(reinterpret_cast<ULONGLONG>(ciBase) + request->Offset), sizeof(newV));
+        Log("g_CiOptions: %p, new value: %d\n", reinterpret_cast<ULONGLONG>(ciBase) + request->Offset, newV);
+
+        irp->AssociatedIrp.SystemBuffer = request;
+        irp->IoStatus.Information = sizeof(Request);
+    } else
+        irp->IoStatus.Information = 0;
+
+    irp->IoStatus.Status = STATUS_SUCCESS;
+    IoCompleteRequest(irp, IO_NO_INCREMENT);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS DriverInitialize(PDRIVER_OBJECT driverObject, PUNICODE_STRING) {
+    PDEVICE_OBJECT deviceObject;
+    IoCreateDevice(driverObject, 0, &DEVICE_NAME, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, FALSE, &deviceObject);
+    IoCreateSymbolicLink(&DEVICE_LINK, &DEVICE_NAME);
+
+    driverObject->MajorFunction[IRP_MJ_CREATE] = IrpDummy;
+    driverObject->MajorFunction[IRP_MJ_CLOSE] = IrpDummy;
+    driverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = IrpDeviceControl;
+
+    SetFlag(deviceObject->Flags, DO_DIRECT_IO);
+    SetFlag(deviceObject->Flags, DO_BUFFERED_IO);
+    ClearFlag(deviceObject->Flags, DO_DEVICE_INITIALIZING);
+
     UNICODE_STRING functionName;
     RtlInitUnicodeString(&functionName, L"PsLoadedModuleList");
     auto moduleList = reinterpret_cast<PLIST_ENTRY>(MmGetSystemRoutineAddress(&functionName));
     if (!moduleList)
         return STATUS_NOT_FOUND;
 
-    PVOID ciBase = nullptr;
+    UNICODE_STRING ciDllName;
+    RtlInitUnicodeString(&ciDllName, L"CI.dll");
+
     for (PLIST_ENTRY link = moduleList; link != moduleList->Blink; link = link->Flink) {
         PLDR_DATA_TABLE_ENTRY entry = CONTAINING_RECORD(link, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
-        if (entry && wcscmp(entry->BaseDllName.Buffer, L"CI.dll") == 0) {
+        if (entry && RtlCompareUnicodeString(&ciDllName, &entry->BaseDllName, TRUE) == 0) { // wcscmp sometimes may invoke BSOD
             ciBase = entry->DllBase;
             break;
         }
     }
     if (!ciBase)
         return STATUS_NOT_FOUND;
-
-    PVOID ciInitialize = RtlFindExportedRoutineByName(ciBase, "CiInitialize");
-    int newValue = 6;
-    Memory::WriteToReadOnly(reinterpret_cast<ULONGLONG>(ciInitialize) + 0xB008, &newValue, sizeof(newValue));
 
     return STATUS_SUCCESS;
 }
