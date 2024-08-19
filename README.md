@@ -4,6 +4,7 @@ Disabler for Driver Signature Enforcement
 ### Features list
 - [X] Patching g_CiOptions using ring0 driver
 - [ ] Patching using UEFI
+- [ ] Not IOCTL communication
 
 ### Usage
 Driver supports Manual mapping, so you can use for example [kdmapper](https://github.com/TheCruZ/kdmapper) for mapping driver or just create it using new service (but you need to sign it):
@@ -21,3 +22,7 @@ Now CI.dll is protected by PatchGuard, to bypass it you have many ways:
 
 ### Pictures
 ![](assets/image.png)
+
+### Credits
+[vergiliusproject](https://www.vergiliusproject.com/kernels/x64/windows-10) for Windows opaque structures
+[FindCiOptions](https://github.com/CaledoniaProject/FindCiOptions) for DONT_RESOLVE_DLL_REFERENCES flag to load CI.dll using LoadLibraryEx
