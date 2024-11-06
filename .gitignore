@@ -1,0 +1,7 @@
+# CLion
+.idea
+cmake-build-release
+cmake-build-debug
+
+# Build files destination
+dist

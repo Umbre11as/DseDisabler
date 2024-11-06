@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <string>
 #include <Zydis/Zydis.h>
+#include "Communication.h"
 
 ULONGLONG FindCipInitialize(ULONGLONG ciInitialize) {
     BYTE data[0x6D];
@@ -57,6 +58,11 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
+    if (!Communication::Setup()) {
+        fprintf(stderr, "Cannot setup communication\n");
+        return 1;
+    }
+
     int newValue;
     if (strcmp(argv[1], "disable") == 0)
         newValue = 8;
@@ -73,24 +79,14 @@ int main(int argc, char* argv[]) {
     const ULONGLONG cipInitialize = FindCipInitialize(ciInitialize);
     const ULONGLONG g_CiOptionsAddress = Findg_CiOptions(cipInitialize);
     const ULONGLONG offset = g_CiOptionsAddress - reinterpret_cast<ULONGLONG>(ciModule);
-    printf("%p\n", offset);
-
-    HANDLE driverHandle = CreateFile(R"(\\.\DseDisabler)", GENERIC_WRITE | GENERIC_READ, NULL, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (!driverHandle || driverHandle == INVALID_HANDLE_VALUE) {
-        fprintf(stderr, "Error while opening driver handle\n");
-        return 1;
-    }
+    printf("Offset: %llX\n", offset);
 
     Request request{};
     request.Offset = offset;
     request.NewValue = newValue;
 
-    DWORD bytesRead = 0;
-    if (!DeviceIoControl(driverHandle, 0x100, &request, sizeof(request), &request, sizeof(request), &bytesRead, nullptr)) {
-        fprintf(stderr, "Error while communicating with the driver\n");
-        return 1;
-    }
+    Communication::Send(&request, sizeof(request));
 
-    printf("Updated\n");
+    printf("g_CiOptions value updated\n");
     return 0;
 }

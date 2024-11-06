@@ -3,8 +3,8 @@ Disabler for Driver Signature Enforcement
 
 ### Features list
 - [X] Patching g_CiOptions using ring0 driver
-- [ ] Patching using UEFI
-- [ ] Not IOCTL communication
+- [ ] Patching using UEFI (Not planned)
+- [X] Not IOCTL communication
 
 ### Usage
 Driver supports Manual mapping, so you can use for example [kdmapper](https://github.com/TheCruZ/kdmapper) for mapping driver or just create it using new service (but you need to sign it):
